@@ -14,7 +14,7 @@ using grpc::ServerWriter;
 using grpc::Status;
 using serverless_learn::Worker;
 using serverless_learn::Chunk;
-using serverless_learn::ReceiveFileResult;
+using serverless_learn::ReceiveFileAck;
 
 
 class WorkerImpl final : public Worker::Service {
@@ -24,13 +24,14 @@ class WorkerImpl final : public Worker::Service {
   }
 
   Status ReceiveFile(ServerContext* context, ServerReader<Chunk>* reader,
-                     ReceiveFileResult* result) override {
+                     ReceiveFileAck* ack) override {
     Chunk chunk;
 
     while (reader->Read(&chunk)) {
       std::cout << "received" << std::endl;
     }
 
+    ack->set_ok(true);
     return Status::OK;
   }
 

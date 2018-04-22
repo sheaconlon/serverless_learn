@@ -13,7 +13,7 @@ using grpc::ClientWriter;
 using grpc::Status;
 using serverless_learn::Worker;
 using serverless_learn::Chunk;
-using serverless_learn::ReceiveFileResult;
+using serverless_learn::ReceiveFileAck;
 
 
 class WorkerStub {
@@ -25,11 +25,11 @@ class WorkerStub {
 
   void ReceiveFile() {
     Chunk chunk;
-    ReceiveFileResult result;
+    ReceiveFileAck ack;
     ClientContext context;
 
     std::unique_ptr<ClientWriter<Chunk>> writer(
-        stub_->ReceiveFile(&context, &result));
+        stub_->ReceiveFile(&context, &ack));
     for (int i = 0; i < 100; i++) {
       chunk.set_data("Hello, world!");
       if (!writer->Write(chunk)) {
@@ -39,7 +39,7 @@ class WorkerStub {
     }
     writer->WritesDone();
     Status status = writer->Finish();
-    if (status.ok()) {
+    if (status.ok() && ack.ok()) {
       std::cout << "ok"
                 << std::endl;
     } else {
