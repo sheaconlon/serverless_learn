@@ -74,7 +74,7 @@ class MasterStub {
     WorkerBirthInfo birth;
     RegisterBirthAck ack;
     ClientContext context;
-    birth.set_ip(addr);
+    birth.set_addr(addr);
     Status status = stub_->RegisterBirth(&context, birth, &ack);
     if (status.ok() && ack.ok()) {
       std::cout << "birth send succeeded" << std::endl;
