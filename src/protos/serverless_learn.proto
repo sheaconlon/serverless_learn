@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option objc_class_prefix = "RTG";
+
+package serverless_learn;
+
+/* The API provided by a worker. */
+service Worker {
+  /* Receive a file for processing by the learning algorithm. */
+  rpc ReceiveFile(stream Chunk) returns (ReceiveFileResult) {}
+}
+
+/* A chunk of a file */
+message Chunk {
+  bytes data = 1; // A continuous section of the file as raw bytes.
+}
+
+/* The result of a ReceiveFile call. */
+message ReceiveFileResult {
+  bool ok = 1; // Whether the file was received successfully.
+}
