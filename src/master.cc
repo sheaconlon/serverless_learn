@@ -1,4 +1,5 @@
 #include <thread>
+#include <mutex>
 #include <grpc/grpc.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
@@ -29,6 +30,16 @@ using serverless_learn::Worker;
 using serverless_learn::Chunk;
 using serverless_learn::ReceiveFileAck;
 
+typedef struct WorkerInfo {
+    WorkerInfo(std::string ip) {
+      this->ip = ip;
+    }
+
+    std::string ip;
+} WorkerInfo;
+
+std::vector<std::shared_ptr<WorkerInfo>> workers;
+std::mutex workers_mutex;
 
 class MasterImpl final : public Master::Service {
  public:
@@ -39,6 +50,12 @@ class MasterImpl final : public Master::Service {
   Status RegisterBirth(ServerContext* context, const WorkerBirthInfo* birth,
                        RegisterBirthAck* ack) override {
     std::cout << "registering birth" << std::endl;
+
+    workers_mutex.lock();
+    std::shared_ptr<WorkerInfo> worker(new WorkerInfo(birth->ip()));
+    workers.push_back(worker);
+    workers_mutex.unlock();
+
     ack->set_ok(true);
     std::cout << "registered birth" << std::endl;
     return Status::OK;
@@ -98,10 +115,21 @@ void run_service() {
 int main(int argc, char** argv) {
   std::thread service_thread(run_service);
 
-  WorkerStub worker(
-      grpc::CreateChannel("localhost:50051",
-                          grpc::InsecureChannelCredentials()));
-  worker.ReceiveFile();
+  while (true) {
+    workers_mutex.lock();
+    bool empty = workers.empty();
+    std::shared_ptr<WorkerInfo> worker_info;
+    if (!empty) {
+      worker_info = workers.front();
+    }
+    workers_mutex.unlock();
+    if (!empty) {
+      WorkerStub worker(
+          grpc::CreateChannel(worker_info->ip,
+                              grpc::InsecureChannelCredentials()));
+      worker.ReceiveFile();
+    }
+  }
 
   service_thread.join();
   return 0;
