@@ -4,6 +4,22 @@ option objc_class_prefix = "RTG";
 
 package serverless_learn;
 
+/* The API provided by a master. */
+service Master {
+  /* Register the birth of a worker. */
+  rpc RegisterBirth(WorkerBirthInfo) returns (RegisterBirthAck) {}
+}
+
+/* Relevant information about a just-born worker. */
+message WorkerBirthInfo {
+  string ip = 1; // The worker's IP address.
+}
+
+/* An ack for a RegisterBirth call. */
+message RegisterBirthAck {
+  bool ok = 1; // Whether the birth was registered successfully.
+}
+
 /* The API provided by a worker. */
 service Worker {
   /* Receive a file for processing by the learning algorithm. */

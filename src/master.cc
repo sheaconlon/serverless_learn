@@ -1,4 +1,9 @@
+#include <thread>
 #include <grpc/grpc.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
+#include <grpcpp/security/server_credentials.h>
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
 #include <grpcpp/create_channel.h>
@@ -11,10 +16,37 @@ using grpc::ClientReader;
 using grpc::ClientReaderWriter;
 using grpc::ClientWriter;
 using grpc::Status;
+using grpc::Server;
+using grpc::ServerBuilder;
+using grpc::ServerContext;
+using grpc::ServerReader;
+using grpc::ServerReaderWriter;
+using grpc::ServerWriter;
+using serverless_learn::Master;
+using serverless_learn::WorkerBirthInfo;
+using serverless_learn::RegisterBirthAck;
 using serverless_learn::Worker;
 using serverless_learn::Chunk;
 using serverless_learn::ReceiveFileAck;
 
+
+class MasterImpl final : public Master::Service {
+ public:
+  explicit MasterImpl() {
+    
+  }
+
+  Status RegisterBirth(ServerContext* context, const WorkerBirthInfo* birth,
+                       RegisterBirthAck* ack) override {
+    std::cout << "registering birth" << std::endl;
+    ack->set_ok(true);
+    std::cout << "registered birth" << std::endl;
+    return Status::OK;
+  }
+
+ private:
+
+};
 
 class WorkerStub {
  public:
@@ -24,6 +56,7 @@ class WorkerStub {
   }
 
   void ReceiveFile() {
+    std::cout << "sending file" << std::endl;
     Chunk chunk;
     ReceiveFileAck ack;
     ClientContext context;
@@ -35,15 +68,13 @@ class WorkerStub {
       if (!writer->Write(chunk)) {
         break;
       }
-      std::cout << "sent" << std::endl;
     }
     writer->WritesDone();
     Status status = writer->Finish();
     if (status.ok() && ack.ok()) {
-      std::cout << "ok"
-                << std::endl;
+      std::cout << "file send succeeded" << std::endl;
     } else {
-      std::cout << "not ok" << std::endl;
+      std::cout << "file send failed" << std::endl;
     }
   }
 
@@ -51,11 +82,27 @@ class WorkerStub {
   std::unique_ptr<Worker::Stub> stub_;
 };
 
+void run_service() {
+  std::string server_address("0.0.0.0:50052");
+  std::cout << "starting service at " << server_address << std::endl;
+  MasterImpl service;
+
+  ServerBuilder builder;
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  builder.RegisterService(&service);
+  std::unique_ptr<Server> server(builder.BuildAndStart());
+  std::cout << "service started" << std::endl;
+  server->Wait();
+}
+
 int main(int argc, char** argv) {
+  std::thread service_thread(run_service);
+
   WorkerStub worker(
       grpc::CreateChannel("localhost:50051",
                           grpc::InsecureChannelCredentials()));
   worker.ReceiveFile();
 
+  service_thread.join();
   return 0;
 }
