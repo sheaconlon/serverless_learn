@@ -9,6 +9,7 @@
 #include <grpcpp/create_channel.h>
 #include <grpcpp/security/credentials.h>
 #include "serverless_learn.grpc.pb.h"
+#include "serverless_learn.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -29,13 +30,16 @@ using serverless_learn::Worker;
 using serverless_learn::Chunk;
 using serverless_learn::ReceiveFileAck;
 
-
+/* An implementation of the worker API (gRPC service) from the proto file.
+ * See that for details. */
 class WorkerImpl final : public Worker::Service {
  public:
+  /* Construct a WorkerImpl. */
   explicit WorkerImpl() {
     
   }
 
+  /* Implements Worker#ReceiveFile from the proto file. See that for details. */
   Status ReceiveFile(ServerContext* context, ServerReader<Chunk>* reader,
                      ReceiveFileAck* ack) override {
     std::cout << "receiving file" << std::endl;
@@ -54,6 +58,7 @@ class WorkerImpl final : public Worker::Service {
 
 };
 
+/* A stub for communicating with a master via its API (gRPC service). */
 class MasterStub {
  public:
   MasterStub(std::shared_ptr<Channel> channel)
@@ -61,6 +66,9 @@ class MasterStub {
     
   }
 
+  /* Tell the worker to register a birth
+   *
+   * Currently tells the master about our birth. */
   void RegisterBirth(std::string addr) {
     std::cout << "sending birth" << std::endl;
     WorkerBirthInfo birth;
@@ -79,6 +87,7 @@ class MasterStub {
   std::unique_ptr<Master::Stub> stub_;
 };
 
+/* Serve requests to the worker API (gRPC service). */
 void run_service(std::string addr) {
   std::string server_address(addr);
   std::cout << "starting service at " << server_address << std::endl;
@@ -93,19 +102,24 @@ void run_service(std::string addr) {
 }
 
 int main(int argc, char** argv) {
+  // Parse arguments.
   if (argc != 2) {
     std::cerr << "usage: worker ADDR" << std::endl;
     exit(1);
   }
   std::string addr(argv[1]);
 
+  // Run the server in another thread. 
   std::thread service_thread(run_service, addr);
 
+  // Register our birth.
   MasterStub master(
-      grpc::CreateChannel("localhost:50052",
+      grpc::CreateChannel(MASTER_ADDR,
                           grpc::InsecureChannelCredentials()));
   master.RegisterBirth(addr);
 
+  // Wait for the server.
   service_thread.join();
+
   return 0;
 }

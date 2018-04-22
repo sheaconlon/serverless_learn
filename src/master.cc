@@ -11,6 +11,7 @@
 #include <grpcpp/create_channel.h>
 #include <grpcpp/security/credentials.h>
 #include "serverless_learn.grpc.pb.h"
+#include "serverless_learn.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -31,31 +32,42 @@ using serverless_learn::Worker;
 using serverless_learn::Chunk;
 using serverless_learn::ReceiveFileAck;
 
-const int FILE_PUSH_INTERVAL = 5000; // milliseconds
+/* The number of milliseconds to wait between rounds of file pushing. */
+const int FILE_PUSH_INTERVAL = 5000;
 
+/* Information about a worker. */
 typedef struct WorkerInfo {
-    WorkerInfo(std::string ip) {
-      this->ip = ip;
+    /* Construct a WorkerInfo. */
+    WorkerInfo(std::string addr) {
+      this->addr = addr;
     }
 
-    std::string ip;
+    std::string addr; // The worker's address (hostname and port).
 } WorkerInfo;
 
+/* Information about all currently-known, live workers. */
 std::vector<std::shared_ptr<WorkerInfo>> workers;
+
+/* A mutex to be used whenever accessing the above. */
 std::mutex workers_mutex;
 
+/* An implementation of the master API (gRPC service) from the proto file.
+ * See that for details. */
 class MasterImpl final : public Master::Service {
  public:
+  /* Construct a MasterImpl. */
   explicit MasterImpl() {
     
   }
 
+  /* Implements Master#RegisterBirth from the proto file. See that for
+   * details. */
   Status RegisterBirth(ServerContext* context, const WorkerBirthInfo* birth,
                        RegisterBirthAck* ack) override {
     std::cout << "registering birth" << std::endl;
 
     workers_mutex.lock();
-    std::shared_ptr<WorkerInfo> worker(new WorkerInfo(birth->ip()));
+    std::shared_ptr<WorkerInfo> worker(new WorkerInfo(birth->addr()));
     workers.push_back(worker);
     workers_mutex.unlock();
 
@@ -68,13 +80,18 @@ class MasterImpl final : public Master::Service {
 
 };
 
+/* A stub for communicating with a worker via its API (gRPC service). */
 class WorkerStub {
  public:
+  /* Construct a WorkerStub. */
   WorkerStub(std::shared_ptr<Channel> channel)
       : stub_(Worker::NewStub(channel)) {
     
   }
 
+  /* Tell the worker to receive a file.
+   *
+   * Currently streams 100 chunks that say "Hello, world!". */
   void ReceiveFile() {
     std::cout << "sending file" << std::endl;
     Chunk chunk;
@@ -102,8 +119,9 @@ class WorkerStub {
   std::unique_ptr<Worker::Stub> stub_;
 };
 
-void run_service() {
-  std::string server_address("0.0.0.0:50052");
+/* Serve requests to the master API (gRPC service). */
+void serve_requests() {
+  std::string server_address(MASTER_ADDR);
   std::cout << "starting service at " << server_address << std::endl;
   MasterImpl service;
 
@@ -115,25 +133,34 @@ void run_service() {
   server->Wait();
 }
 
-int main(int argc, char** argv) {
-  std::thread service_thread(run_service);
-
+/* Periodically push a file to each worker. */
+void push_file() {
   while (true) {
     workers_mutex.lock();
-    std::vector<std::string> worker_ips;
+    std::vector<std::string> worker_addrs;
     for (std::shared_ptr<WorkerInfo> worker_info : workers) {
-      worker_ips.push_back(worker_info->ip);
+      worker_addrs.push_back(worker_info->addr);
     }
     workers_mutex.unlock();
-    for (std::string ip : worker_ips) {
+    for (std::string addr : worker_addrs) {
       WorkerStub worker(
-          grpc::CreateChannel(ip,
+          grpc::CreateChannel(addr,
                               grpc::InsecureChannelCredentials()));
       worker.ReceiveFile();
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(FILE_PUSH_INTERVAL));
   }
+}
 
-  service_thread.join();
+int main(int argc, char** argv) {
+  // Run the server in another thread.
+  std::thread server_thread(serve_requests);
+
+  // Periodically push files.
+  push_file();
+
+  // Wait for the server.
+  server_thread.join();
+
   return 0;
 }

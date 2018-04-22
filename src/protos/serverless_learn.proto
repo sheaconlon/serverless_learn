@@ -12,7 +12,7 @@ service Master {
 
 /* Relevant information about a just-born worker. */
 message WorkerBirthInfo {
-  string ip = 1; // The worker's IP address.
+  string addr = 1; // The worker's hostname and port.
 }
 
 /* An ack for a RegisterBirth call. */
