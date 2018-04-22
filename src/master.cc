@@ -1,5 +1,6 @@
 #include <thread>
 #include <mutex>
+#include <chrono>
 #include <grpc/grpc.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
@@ -29,6 +30,8 @@ using serverless_learn::RegisterBirthAck;
 using serverless_learn::Worker;
 using serverless_learn::Chunk;
 using serverless_learn::ReceiveFileAck;
+
+const int FILE_PUSH_INTERVAL = 5000; // milliseconds
 
 typedef struct WorkerInfo {
     WorkerInfo(std::string ip) {
@@ -117,18 +120,18 @@ int main(int argc, char** argv) {
 
   while (true) {
     workers_mutex.lock();
-    bool empty = workers.empty();
-    std::shared_ptr<WorkerInfo> worker_info;
-    if (!empty) {
-      worker_info = workers.front();
+    std::vector<std::string> worker_ips;
+    for (std::shared_ptr<WorkerInfo> worker_info : workers) {
+      worker_ips.push_back(worker_info->ip);
     }
     workers_mutex.unlock();
-    if (!empty) {
+    for (std::string ip : worker_ips) {
       WorkerStub worker(
-          grpc::CreateChannel(worker_info->ip,
+          grpc::CreateChannel(ip,
                               grpc::InsecureChannelCredentials()));
       worker.ReceiveFile();
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(FILE_PUSH_INTERVAL));
   }
 
   service_thread.join();

@@ -61,12 +61,12 @@ class MasterStub {
     
   }
 
-  void RegisterBirth() {
+  void RegisterBirth(std::string addr) {
     std::cout << "sending birth" << std::endl;
     WorkerBirthInfo birth;
     RegisterBirthAck ack;
     ClientContext context;
-    birth.set_ip("localhost:50051");
+    birth.set_ip(addr);
     Status status = stub_->RegisterBirth(&context, birth, &ack);
     if (status.ok() && ack.ok()) {
       std::cout << "birth send succeeded" << std::endl;
@@ -79,8 +79,8 @@ class MasterStub {
   std::unique_ptr<Master::Stub> stub_;
 };
 
-void run_service() {
-  std::string server_address("0.0.0.0:50051");
+void run_service(std::string addr) {
+  std::string server_address(addr);
   std::cout << "starting service at " << server_address << std::endl;
   WorkerImpl service;
 
@@ -93,12 +93,18 @@ void run_service() {
 }
 
 int main(int argc, char** argv) {
-  std::thread service_thread(run_service);
+  if (argc != 2) {
+    std::cerr << "usage: worker ADDR" << std::endl;
+    exit(1);
+  }
+  std::string addr(argv[1]);
+
+  std::thread service_thread(run_service, addr);
 
   MasterStub master(
       grpc::CreateChannel("localhost:50052",
                           grpc::InsecureChannelCredentials()));
-  master.RegisterBirth();
+  master.RegisterBirth(addr);
 
   service_thread.join();
   return 0;
