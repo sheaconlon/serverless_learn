@@ -1,6 +1,10 @@
 #ifndef SERVERLESS_LEARN_H
 #define SERVERLESS_LEARN_H
 
-#define MASTER_ADDR "localhost:50052" // The master's well-known location.
+// The master's well-known location.
+#define MASTER_ADDR "localhost:50052"
+
+// The file server's well-known location.
+#define FILE_SERVER_ADDR "localhost:50053"
 
 #endif

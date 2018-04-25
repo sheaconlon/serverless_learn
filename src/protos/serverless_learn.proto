@@ -20,6 +20,23 @@ message RegisterBirthAck {
   bool ok = 1; // Whether the birth was registered successfully.
 }
 
+/* The API provided by a file server. */
+service FileServer {
+	/* Do a push and return its outcome. */
+	rpc DoPush(Push) returns (PushOutcome) {}
+}
+
+/* A requested push of a file to some recipient. */
+message Push {
+	string recipient_addr = 1; // The receipient's hostname and port.
+	uint32 file_num = 2; // The number of the file to push.
+}
+
+/* The outcome of a requested push of a file to some recipient. */
+message PushOutcome {
+	bool ok = 1; // Whether the file was pushed successfully.
+}
+
 /* The API provided by a worker. */
 service Worker {
   /* Receive a file for processing by the learning algorithm. */

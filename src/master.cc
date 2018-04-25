@@ -1,7 +1,6 @@
 #include <thread>
 #include <mutex>
 #include <chrono>
-#include <random>
 #include <grpc/grpc.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
@@ -29,21 +28,12 @@ using grpc::ServerWriter;
 using serverless_learn::Master;
 using serverless_learn::WorkerBirthInfo;
 using serverless_learn::RegisterBirthAck;
-using serverless_learn::Worker;
-using serverless_learn::Chunk;
-using serverless_learn::ReceiveFileAck;
+using serverless_learn::FileServer;
+using serverless_learn::Push;
+using serverless_learn::PushOutcome;
 
 /* The number of milliseconds to wait between rounds of file pushing. */
 const int FILE_PUSH_INTERVAL = 5000;
-
-/* The number of bytes that the dummy file (below) should contain. */
-const long DUMMY_FILE_LENGTH = 100 * 1000 * 1000;
-
-/* A dummy file to push to the workers periodically. */
-std::string file;
-
-/* The number of bytes of data that each chunk should contain. */
-const long CHUNK_SIZE = 1 * 1000 * 1000;
 
 /* Information about a worker. */
 typedef struct WorkerInfo {
@@ -90,47 +80,33 @@ class MasterImpl final : public Master::Service {
 
 };
 
-/* A stub for communicating with a worker via its API (gRPC service). */
-class WorkerStub {
+/* A stub for communicating with a file server via its API (gRPC service). */
+class FileServerStub {
  public:
-  /* Construct a WorkerStub. */
-  WorkerStub(std::shared_ptr<Channel> channel)
-      : stub_(Worker::NewStub(channel)) {
+  /* Construct a FileServerStub. */
+  FileServerStub(std::shared_ptr<Channel> channel)
+      : stub_(FileServer::NewStub(channel)) {
     
   }
 
-  /* Tell the worker to receive a file.
-   *
-   * Currently streams the dummy file. */
-  void ReceiveFile() {
-    std::cout << "sending file" << std::endl;
-    Chunk chunk;
-    ReceiveFileAck ack;
+  /* Tell the file server to do a push. */
+  void DoPush(std::string recipient_addr, int file_num) {
+    std::cout << "requesting push" << std::endl;
+    Push push;
+    PushOutcome outcome;
     ClientContext context;
-
-    std::unique_ptr<ClientWriter<Chunk>> writer(
-        stub_->ReceiveFile(&context, &ack));
-    long pos = 0;
-    while (pos < file.length()) {
-      std::string data = file.substr(pos, CHUNK_SIZE);
-      chunk.set_data(data);
-      if (!writer->Write(chunk)) {
-        break;
-      }
-      pos += data.length();
-    }
-    writer->WritesDone();
-    Status status = writer->Finish();
-    if (status.ok() && ack.ok()) {
-      std::cout << "file send succeeded" << std::endl;
+    push.set_recipient_addr(recipient_addr);
+    push.set_file_num(file_num);
+    Status status = stub_->DoPush(&context, push, &outcome);
+    if (status.ok() && outcome.ok()) {
+      std::cout << "push request succeeded" << std::endl;
     } else {
-      std::cout << "file send failed" << std::endl;
-      std::cout << status.error_message();
+      std::cout << "push request failed" << std::endl;
     }
   }
 
  private:
-  std::unique_ptr<Worker::Stub> stub_;
+  std::unique_ptr<FileServer::Stub> stub_;
 };
 
 /* Serve requests to the master API (gRPC service). */
@@ -147,8 +123,13 @@ void serve_requests() {
   server->Wait();
 }
 
-/* Periodically push a file to each worker. */
-void push_file() {
+/* Periodically request file pushes to workers.
+ *
+ * Currently requests a push of file 0 to each worker.  */
+void periodically_request_pushes() {
+  FileServerStub file_server(
+      grpc::CreateChannel(FILE_SERVER_ADDR,
+                          grpc::InsecureChannelCredentials()));
   while (true) {
     workers_mutex.lock();
     std::vector<std::string> worker_addrs;
@@ -157,28 +138,19 @@ void push_file() {
     }
     workers_mutex.unlock();
     for (std::string addr : worker_addrs) {
-      WorkerStub worker(
-          grpc::CreateChannel(addr,
-                              grpc::InsecureChannelCredentials()));
-      worker.ReceiveFile();
+
+      file_server.DoPush(addr, 0);
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(FILE_PUSH_INTERVAL));
   }
 }
 
 int main(int argc, char** argv) {
-  // Fill the dummy file.
- std::independent_bits_engine<
-    std::default_random_engine, CHAR_BIT, unsigned char> generator;
-  for (int i = 0; i < DUMMY_FILE_LENGTH; i++) {
-    file += generator();
-  }
-
   // Run the server in another thread.
   std::thread server_thread(serve_requests);
 
   // Periodically push files.
-  push_file();
+  periodically_request_pushes();
 
   // Wait for the server.
   server_thread.join();

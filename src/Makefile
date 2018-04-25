@@ -23,12 +23,15 @@ PROTOS_PATH = protos
 
 vpath %.proto $(PROTOS_PATH)
 
-all: worker master
+all: worker master file_server
 
 worker: serverless_learn.pb.o serverless_learn.grpc.pb.o worker.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 master: serverless_learn.pb.o serverless_learn.grpc.pb.o master.o
+	$(CXX) $^ $(LDFLAGS) -o $@
+
+file_server: serverless_learn.pb.o serverless_learn.grpc.pb.o file_server.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 %.grpc.pb.cc: %.proto
@@ -38,4 +41,4 @@ master: serverless_learn.pb.o serverless_learn.grpc.pb.o master.o
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
 clean:
-	rm -f *.o *.pb.cc *.pb.h worker master
+	rm -f *.o *.pb.cc *.pb.h worker master file_server
