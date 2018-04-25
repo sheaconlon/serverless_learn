@@ -29,6 +29,8 @@ using serverless_learn::RegisterBirthAck;
 using serverless_learn::Worker;
 using serverless_learn::Chunk;
 using serverless_learn::ReceiveFileAck;
+using serverless_learn::FlowFeedback;
+using serverless_learn::PeerList;
 
 /* An implementation of the worker API (gRPC service) from the proto file.
  * See that for details. */
@@ -36,7 +38,7 @@ class WorkerImpl final : public Worker::Service {
  public:
   /* Construct a WorkerImpl. */
   explicit WorkerImpl() {
-    
+
   }
 
   /* Implements Worker#ReceiveFile from the proto file. See that for details. */
@@ -46,11 +48,22 @@ class WorkerImpl final : public Worker::Service {
     Chunk chunk;
 
     while (reader->Read(&chunk)) {
-      
+
     }
 
     ack->set_ok(true);
     std::cout << "received file" << std::endl;
+    return Status::OK;
+  }
+
+  /* Responds to Master requests to see if Worker still alive. */
+  Status CheckUp(ServerContext* context, const PeerList* peer_list,
+                 FlowFeedback* feedback) override {
+    std::cout << "responding to CheckUp" << std::endl;
+
+    // TODO
+
+    std::cout << "responded to CheckUp" << std::endl;
     return Status::OK;
   }
 
@@ -63,7 +76,7 @@ class MasterStub {
  public:
   MasterStub(std::shared_ptr<Channel> channel)
       : stub_(Master::NewStub(channel)) {
-    
+
   }
 
   /* Tell the worker to register a birth
@@ -109,7 +122,7 @@ int main(int argc, char** argv) {
   }
   std::string addr(argv[1]);
 
-  // Run the server in another thread. 
+  // Run the server in another thread.
   std::thread service_thread(run_service, addr);
 
   // Register our birth.

@@ -26,14 +26,22 @@ using grpc::ServerReader;
 using grpc::ServerReaderWriter;
 using grpc::ServerWriter;
 using serverless_learn::Master;
+using serverless_learn::Worker;
 using serverless_learn::WorkerBirthInfo;
 using serverless_learn::RegisterBirthAck;
 using serverless_learn::FileServer;
 using serverless_learn::Push;
 using serverless_learn::PushOutcome;
+using serverless_learn::FlowFeedback;
+using serverless_learn::LoadFeedback;
+using serverless_learn::PeerList;
+using serverless_learn::Empty;
 
 /* The number of milliseconds to wait between rounds of file pushing. */
 const int FILE_PUSH_INTERVAL = 5000;
+/* The number of milliseconds to wait between rounds of checking the file server
+ * and workers. */
+const int CHECKUP_INTERVAL = 5000;
 
 /* Information about a worker. */
 typedef struct WorkerInfo {
@@ -57,7 +65,7 @@ class MasterImpl final : public Master::Service {
  public:
   /* Construct a MasterImpl. */
   explicit MasterImpl() {
-    
+
   }
 
   /* Implements Master#RegisterBirth from the proto file. See that for
@@ -80,13 +88,14 @@ class MasterImpl final : public Master::Service {
 
 };
 
+
 /* A stub for communicating with a file server via its API (gRPC service). */
 class FileServerStub {
  public:
   /* Construct a FileServerStub. */
   FileServerStub(std::shared_ptr<Channel> channel)
       : stub_(FileServer::NewStub(channel)) {
-    
+
   }
 
   /* Tell the file server to do a push. */
@@ -105,8 +114,61 @@ class FileServerStub {
     }
   }
 
+  /* Check to see if the FileServer is still alive, and
+   * respond to any load feedback sent. */
+  void CheckUp() {
+    std::cout << "checking on FileServer" << std::endl;
+    Empty empty;
+    LoadFeedback feedback;
+    ClientContext context;
+    Status status = stub_->CheckUp(&context, empty, &feedback);
+    if (status.ok()) {
+      // TODO:  respond to LoadFeedback
+      std::cout << "checkup on FileServer succeeded" << std::endl;
+    } else {
+      std::cout << "checkup on FileServer failed" << std::endl;
+    }
+  }
+
  private:
   std::unique_ptr<FileServer::Stub> stub_;
+};
+
+
+/* A stub for communicating with a worker via its API (gRPC service). */
+class WorkerStub {
+ public:
+  /* Construct a WorkerStub. */
+  WorkerStub(std::shared_ptr<Channel> channel, int id)
+      : stub_(Worker::NewStub(channel)), id(id) {
+
+  }
+
+  /* Tell the file server to do a push. */
+  void CheckUp() {
+    std::cout << "checking on worker" << id << std::endl;
+    PeerList peer_list;
+    FlowFeedback feedback;
+    ClientContext context;
+
+    // copy in worker addrs to the peer list
+    workers_mutex.lock();
+    for (std::shared_ptr<WorkerInfo> worker_info : workers) {
+      peer_list.add_peer_addrs(worker_info->addr);
+    }
+    workers_mutex.unlock();
+
+    Status status = stub_->CheckUp(&context, peer_list, &feedback);
+    if (status.ok()) {
+      std::cout << "checkup on worker" << id << " succeeded" << std::endl;
+    } else {
+      std::cout << "checkup on worker" << id << " failed" << std::endl;
+    }
+  }
+
+ private:
+  std::unique_ptr<Worker::Stub> stub_;
+  int id;
 };
 
 /* Serve requests to the master API (gRPC service). */
@@ -145,15 +207,48 @@ void periodically_request_pushes() {
   }
 }
 
+
+void periodically_do_checkups() {
+  FileServerStub file_server(
+      grpc::CreateChannel(FILE_SERVER_ADDR,
+                          grpc::InsecureChannelCredentials()));
+
+  while (true) {
+    file_server.CheckUp();
+
+    workers_mutex.lock();
+    std::vector<std::string> worker_addrs;
+    for (std::shared_ptr<WorkerInfo> worker_info : workers) {
+      worker_addrs.push_back(worker_info->addr);
+    }
+    workers_mutex.unlock();
+
+    int i = 0;
+    for (std::string addr : worker_addrs) {
+      // TODO (PERF):  don't reconstruct stubs every time!
+      auto channel = grpc::CreateChannel(addr, grpc::InsecureChannelCredentials());
+      WorkerStub worker(channel, i);
+      worker.CheckUp();
+      i++;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(CHECKUP_INTERVAL));
+  }
+}
+
 int main(int argc, char** argv) {
   // Run the server in another thread.
   std::thread server_thread(serve_requests);
+  // Create daemon to check if file server and workers are still alive
+  std::thread checkup_thread(periodically_do_checkups);
 
   // Periodically push files.
   periodically_request_pushes();
 
   // Wait for the server.
   server_thread.join();
+  // Wait for the daemon.
+  checkup_thread.join();
 
   return 0;
 }

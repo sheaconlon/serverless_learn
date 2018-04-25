@@ -24,6 +24,9 @@ message RegisterBirthAck {
 service FileServer {
 	/* Do a push and return its outcome. */
 	rpc DoPush(Push) returns (PushOutcome) {}
+
+  /* Return a heartbeat indicating this FileServer is alive */
+  rpc CheckUp(Empty) returns (LoadFeedback) {}
 }
 
 /* A requested push of a file to some recipient. */
@@ -41,6 +44,9 @@ message PushOutcome {
 service Worker {
   /* Receive a file for processing by the learning algorithm. */
   rpc ReceiveFile(stream Chunk) returns (ReceiveFileAck) {}
+
+  /* Return a heartbeat indicating this Worker is alive */
+  rpc CheckUp(PeerList) returns (FlowFeedback) {}
 }
 
 /* A chunk of a file */
@@ -51,4 +57,21 @@ message Chunk {
 /* An ack for a ReceiveFile call. */
 message ReceiveFileAck {
   bool ok = 1; // Whether the file was received successfully.
+}
+
+/* List of peer worker addresses */
+message PeerList {
+  repeated string peer_addrs = 1;
+}
+
+message FlowFeedback {
+  // empty for now
+}
+
+message LoadFeedback {
+  // empty for now
+}
+
+message Empty {
+  // literally nothing
 }

@@ -33,6 +33,8 @@ using serverless_learn::ReceiveFileAck;
 using serverless_learn::FileServer;
 using serverless_learn::Push;
 using serverless_learn::PushOutcome;
+using serverless_learn::LoadFeedback;
+using serverless_learn::Empty;
 
 /* The number of bytes that the dummy file (below) should contain. */
 const long DUMMY_FILE_LENGTH = 100 * 1000 * 1000;
@@ -49,7 +51,7 @@ class WorkerStub {
   /* Construct a WorkerStub. */
   WorkerStub(std::shared_ptr<Channel> channel)
       : stub_(Worker::NewStub(channel)) {
-    
+
   }
 
   /* Tell the worker to receive a file.
@@ -94,7 +96,7 @@ class FileServerImpl final : public FileServer::Service {
  public:
   /* Construct a FileServerImpl. */
   explicit FileServerImpl() {
-    
+
   }
 
   /* Implements FileServer#DoPush from the proto file. See that for details. */
@@ -113,6 +115,17 @@ class FileServerImpl final : public FileServer::Service {
 
     outcome->set_ok(ok);
     std::cout << "did push" << std::endl;
+    return Status::OK;
+  }
+
+  /* Responds to Master requests to see if FileServer still alive. */
+  Status CheckUp(ServerContext* context, const Empty* empty,
+                 LoadFeedback* feedback) override {
+    std::cout << "responding to CheckUp" << std::endl;
+
+    // TODO
+
+    std::cout << "responded to CheckUp" << std::endl;
     return Status::OK;
   }
 
