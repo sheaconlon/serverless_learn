@@ -8,6 +8,9 @@ package serverless_learn;
 service Master {
   /* Register the birth of a worker. */
   rpc RegisterBirth(WorkerBirthInfo) returns (RegisterBirthAck) {}
+
+  /* sending updates between master &  workers */
+  rpc ExchangeUpdates(Update) returns (Update) {}
 }
 
 /* Relevant information about a just-born worker. */
@@ -47,6 +50,9 @@ service Worker {
 
   /* Return a heartbeat indicating this Worker is alive */
   rpc CheckUp(PeerList) returns (FlowFeedback) {}
+
+  /* sending updates between workers */
+  rpc ExchangeUpdates(Update) returns (Update) {}
 }
 
 /* A chunk of a file */
@@ -70,6 +76,10 @@ message FlowFeedback {
 
 message LoadFeedback {
   // empty for now
+}
+
+message Update{
+  repeated double delta = 1;
 }
 
 message Empty {

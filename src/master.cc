@@ -13,6 +13,8 @@
 #include "serverless_learn.grpc.pb.h"
 #include "serverless_learn.h"
 
+#include <vector>
+
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientReader;
@@ -53,6 +55,10 @@ typedef struct WorkerInfo {
     std::string addr; // The worker's address (hostname and port).
 } WorkerInfo;
 
+std::vector<double> model_state;
+std::vector<double> old_state;
+const double LEARN_RATE = 0.5;
+
 /* Information about all currently-known, live workers. */
 std::vector<std::shared_ptr<WorkerInfo>> workers;
 
@@ -81,6 +87,29 @@ class MasterImpl final : public Master::Service {
 
     ack->set_ok(true);
     std::cout << "registered birth" << std::endl;
+    return Status::OK;
+  }
+
+  /* Implements Master#RegisterBirth from the proto file. See that for
+   * details. */
+  Status ExchangeUpdates(ServerContext* context, const Update* update,
+                       Update* return_update) override {
+    std::cout << "updating the features" << std::endl;
+
+    int remote_len = update->delta_size();
+    while(model_state.size() < remote_len){
+      model_state.push_back(0);
+      old_state.push_back(0);
+    }
+
+    for (int i = 0; i < model_state.size();i++){
+      model_state[i] += LEARN_RATE * updates->delta()[i];
+      return_update->add_delta(model_state[i] - old_state[i]);  
+    }
+
+    old_state = model_state;
+
+    std::cout << "end feature updates" << std::endl;
     return Status::OK;
   }
 
@@ -233,6 +262,33 @@ void periodically_do_checkups() {
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(CHECKUP_INTERVAL));
+  }
+}
+
+void periodically_send_updates() {
+
+  while (true) {
+    
+
+    workers_mutex.lock();
+    int lucky_worker_index = rand() % workers.size();
+    std::string lucky_worker_addr = workers[lucky_worker_index].addr;
+    workers_mutex.unlock();
+
+
+    Update update;
+    for (int i = 0; i < model_state.size();i++){
+      update->add_delta(model_state[i] - old_state[i]);  
+    }
+
+    auto channel = grpc::CreateChannel(lucky_worker_addr, grpc::InsecureChannelCredentials());
+    WorkerStub worker(channel, lucky_worker_index);
+    worker.ExchangeUpdates(&update);
+    // i++;
+    // }
+    old_state = model_state;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(GOSSIP_INTERVAL));
   }
 }
 
