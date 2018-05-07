@@ -21,15 +21,25 @@ GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 
 PROTOS_PATH = protos
 
+FILECOUNT = 100
+FILESIZE = 1000
+
 vpath %.proto $(PROTOS_PATH)
 
-all: worker master file_server
+all: worker master files file_server
 
 worker: serverless_learn.pb.o serverless_learn.grpc.pb.o worker.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 master: serverless_learn.pb.o serverless_learn.grpc.pb.o master.o
 	$(CXX) $^ $(LDFLAGS) -o $@
+
+files:
+	mkdir -p dummyfiles
+	number=1 ; while [[ $$number -le $(FILECOUNT) ]] ; do \
+        head -c $(FILESIZE) /dev/urandom > dummyfiles/$$number; \
+        ((number = number + 1)) ; \
+    done
 
 file_server: serverless_learn.pb.o serverless_learn.grpc.pb.o file_server.o
 	$(CXX) $^ $(LDFLAGS) -o $@
@@ -42,3 +52,4 @@ file_server: serverless_learn.pb.o serverless_learn.grpc.pb.o file_server.o
 
 clean:
 	rm -f *.o *.pb.cc *.pb.h worker master file_server
+	rm -rf dummyfiles
